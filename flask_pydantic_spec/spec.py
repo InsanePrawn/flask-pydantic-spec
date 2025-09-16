@@ -57,6 +57,8 @@ class FlaskPydanticSpec:
         after: Callable = default_after_handler,
         **kwargs: Any,
     ):
+        self.app = app
+        self.blueprint = blueprint
         self.before: Callable = before
         self.after: Callable = after
         self.config = Config(**kwargs)

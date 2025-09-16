@@ -24,7 +24,8 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/turner-townsend/flask-pydantic-spec",
     packages=find_packages(exclude=["examples*", "tests*"]),
-    package_data={},
+    include_package_data=True,
+    package_data = {'flask_pydantic_spec': ['templates/*/*.html']},
     classifiers=[
         "Programming Language :: Python :: 3 :: Only",
         "Programming Language :: Python :: 3.9",
@@ -35,6 +36,7 @@ setup(
         "Operating System :: OS Independent",
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
+    
     python_requires=">=3.9",
     install_requires=requires,
     extras_require={

@@ -1,93 +1,62 @@
-PAGES = {
-    # https://github.com/Redocly/redoc
-    "redoc": """
-<!DOCTYPE html>
-<html>
-    <head>
-        <title>{0.TITLE}</title>
-        <!-- needed for adaptive design -->
-        <meta charset="utf-8"/>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <link href=
-        "https://fonts.googleapis.com/css?family=Montserrat:300,400,700|Roboto:300,400,700"
-        rel="stylesheet">
+from flask import (
+    Blueprint,
+    Flask,
+    jsonify,
+    redirect,
+    render_template,
+)
+from typing import Callable, TYPE_CHECKING
+from werkzeug import Response as WerkzeugResponse
 
-        <!--
-        ReDoc doesn't change outer page styles
-        -->
-        <style>
-        body {{
-            margin: 0;
-            padding: 0;
-        }}
-        </style>
-    </head>
-    <body>
-        <redoc spec-url='{0.spec_url}'></redoc>
-        <script src="https://cdn.jsdelivr.net/npm/redoc@next/bundles/redoc.standalone.js"> </script>
-    </body>
-</html>""",
-    # https://swagger.io
-    "swagger": """
-<!-- HTML for static distribution bundle build -->
-<!DOCTYPE html>
-<html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <title>{0.TITLE}</title>
-        <link rel="stylesheet" type="text/css"
-        href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css" >
-        <style>
-        html
-        {{
-            box-sizing: border-box;
-            overflow: -moz-scrollbars-vertical;
-            overflow-y: scroll;
-        }}
+if TYPE_CHECKING:
+    from .spec import FlaskPydanticSpec
 
-        *,
-        *:before,
-        *:after
-        {{
-            box-sizing: inherit;
-        }}
 
-        body
-        {{
-            margin:0;
-            background: #fafafa;
-        }}
-        </style>
-    </head>
+def render_doc(*, spec: "FlaskPydanticSpec", doc_name: str) -> str:
+    return render_template(
+        [f"{prefix.rstrip('/')}/{doc_name}" for prefix in spec.config.TEMPLATE_DIRS],
+        config=spec.config,
+    )
 
-    <body>
-        <div id="swagger-ui"></div>
 
-        <script
-src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
-        <script
-src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
-        <script>
-        window.onload = function() {{
-        // Begin Swagger UI call region
-        const ui = SwaggerUIBundle({{
-            url: "{0.spec_url}",
-            dom_id: '#swagger-ui',
-            deepLinking: true,
-            presets: [
-            SwaggerUIBundle.presets.apis,
-            SwaggerUIStandalonePreset
-            ],
-            plugins: [
-            SwaggerUIBundle.plugins.DownloadUrl
-            ],
-            layout: "StandaloneLayout"
-        }})
-        // End Swagger UI call region
+def default_redirect(spec: "FlaskPydanticSpec") -> WerkzeugResponse:
+    return redirect(f"./{spec.config.UI}", 307)
 
-        window.ui = ui
-        }}
-    </script>
-    </body>
-</html>""",
-}
+
+def register_pages(
+    spec: "FlaskPydanticSpec",
+    bp: Blueprint | Flask,
+    *,
+    create_sub_bp: str | None = "apidoc",
+    add_template_paths: bool = True,
+) -> None:
+    sub_bp: Blueprint | Flask
+    if create_sub_bp:
+        sub_bp = Blueprint(
+            create_sub_bp,
+            __name__,
+            template_folder="templates",
+        )
+        sub_bp.add_url_rule(
+            f"/{spec.config.PATH}/",
+            "index",
+            lambda: default_redirect(spec=spec),
+        )
+    else:
+        sub_bp = bp
+
+    # create the lambda in a function to work around weird doc_name re-binding in for-loop
+    def make_doc_route(doc_name: str) -> Callable[[], str]:
+        return lambda: render_doc(spec=spec, doc_name=doc_name)
+
+    for route in spec.config._SUPPORT_UI:
+        sub_bp.add_url_rule(
+            f"/{spec.config.PATH}/{route}",
+            route,
+            make_doc_route(f"{route}.html"),
+        )
+
+    sub_bp.add_url_rule(spec.config.spec_url, "openapi", lambda: jsonify(spec.spec))
+    if create_sub_bp:
+        assert isinstance(sub_bp, Blueprint)
+        bp.register_blueprint(sub_bp)

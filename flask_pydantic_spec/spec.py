@@ -4,14 +4,14 @@ from functools import wraps
 from typing import Mapping, Optional, Type, Union, Callable, Iterable, Any, Dict
 from operator import itemgetter
 
-from flask import Flask, Response as FlaskResponse, Blueprint, jsonify
+from flask import Flask, Response as FlaskResponse, Blueprint
 from flask.blueprints import BlueprintSetupState
 from inflection import camelize
 
 from . import Request
 from .config import Config
 from .flask_backend import FlaskBackend
-from .page import PAGES
+from .page import register_pages
 from .types import BaseModelUnion, RequestBase, ResponseBase
 from .utils import (
     get_model_schema,
@@ -93,19 +93,8 @@ class FlaskPydanticSpec:
         if register_route:
             self.register_spec_routes(app_or_blueprint)
 
-    def register_spec_routes(self, app_or_blueprint: Union[Flask, Blueprint]) -> None:
-        app_or_blueprint.add_url_rule(
-            self.config.spec_url,
-            "openapi",
-            lambda: jsonify(self.spec),
-        )
-
-        for ui in PAGES:
-            app_or_blueprint.add_url_rule(
-                f"/{self.config.PATH}/{ui}",
-                f"doc_page_{ui}",
-                lambda ui=ui: PAGES[ui].format(self.config),
-            )
+    def register_spec_routes(self, app_or_blueprint: Union[Flask, Blueprint], **kwargs) -> None:
+        register_pages(spec=self, bp=app_or_blueprint, **kwargs)
 
     def for_blueprint(self, blueprint: Blueprint, **kwargs: Any) -> "FlaskPydanticSpec":
         def _record_app(state: BlueprintSetupState) -> None:

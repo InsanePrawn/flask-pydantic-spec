@@ -36,6 +36,10 @@ class Config:
 
         self.INFO: Dict[str, str] = {}
         self.TAGS: List[Mapping[str, str]] = []
+        self.TEMPLATE_DIRS: List[str] = [
+            "flask_pydantic_spec",
+            "flask_pydantic_spec_defaults",
+        ]
 
         self.logger = logging.getLogger(__name__)
 

@@ -177,7 +177,7 @@ class FlaskBackend:
                 raw_body = gzip.decompress(request.stream.read()).decode(encoding="utf-8")
                 parsed_body = json.loads(raw_body)
             else:
-                parsed_body = request.get_json(silent=True) or {}
+                parsed_body = request.get_json(silent=not bool(body)) or {}
         elif request.content_type and "multipart/form-data" in request.content_type:
             # It's possible there is a binary json object in the files - iterate through and find it
             parsed_body = {}

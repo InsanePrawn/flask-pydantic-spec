@@ -1,18 +1,24 @@
 import re
 from typing import (
+    Generic,
     Optional,
     Type,
     Iterable,
     Mapping,
     Any,
     Dict,
+    List,
     NamedTuple,
+    Set,
+    Tuple,
     TypeVar,
     Union,
+    get_args,
 )
 
-from pydantic import BaseModel, RootModel
+from pydantic import BaseModel, RootModel, GetCoreSchemaHandler
 from pydantic import v1
+from pydantic_core import SchemaError, core_schema
 
 
 BaseModelUnion = Union[BaseModel, v1.BaseModel]
@@ -46,6 +52,131 @@ class ResponseModel(NamedTuple):
 
 class HtmlResponse(RootModel):
     root: str
+
+
+IterableT = TypeVar("IterableT")
+ValueT = TypeVar("ValueT")
+
+
+def get_container_schema(
+    cls: Type,
+    *,
+    source: Any,
+    handler: GetCoreSchemaHandler,
+    container_type_hint: Type,
+    container_type: Type,
+) -> core_schema.CoreSchema:
+    instance_schema = core_schema.is_instance_schema(cls)
+    raw_element_schema = None
+
+    args = get_args(source)
+
+    def to_container(d: Any, container_type: Type) -> Any:
+        if isinstance(d, container_type):
+            return d
+
+        if isinstance(d, (list, set, tuple)):
+            data = container_type(d)
+        else:
+            data = container_type([d])
+
+        return data
+
+    if args:
+        arg = args[0]
+        if len(args) > 1 and (len(args) > 2 or args[1] not in [..., "..."]):
+            raise SchemaError(
+                f"Invalid type hint for {cls.__name__}: Multiple type parameters not supported: {source}.\nExpected something like {cls.__name__}[{arg.__name__ if isinstance(arg, type) else arg}, ...]"
+            )
+
+        sequence_t_schema = handler.generate_schema(container_type_hint[*args])
+        if arg not in (Any, "Any"):
+            raw_element_schema = core_schema.no_info_after_validator_function(
+                lambda d: to_container(d, container_type=container_type),
+                handler.generate_schema(arg),
+            )
+    else:
+        sequence_t_schema = handler.generate_schema(container_type_hint)
+
+    non_instance_schema: core_schema.CoreSchema
+    non_instance_schema = core_schema.no_info_after_validator_function(
+        container_type, sequence_t_schema
+    )
+
+    if raw_element_schema:
+        non_instance_schema = core_schema.union_schema([raw_element_schema, non_instance_schema])
+
+    return core_schema.union_schema([instance_schema, non_instance_schema])
+
+
+class HttpList(list[ValueT], Generic[ValueT]):
+    """F
+    Wrapper class around `builtins.list` to handle conversion of single parameters.
+
+    E.g. `foo: HttpList[int]` converts `foo=1` to `foo=[1]` and `foo=(1, 2)` to `foo=[1, 2]`
+
+    Validates to `builtins.list`.
+    """
+
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls, source: Any, handler: GetCoreSchemaHandler
+    ) -> core_schema.CoreSchema:
+        return get_container_schema(
+            cls,
+            source=source,
+            handler=handler,
+            container_type_hint=List,
+            container_type=list,
+        )
+
+
+class HttpSet(set[ValueT], Generic[ValueT]):
+    """
+    Wrapper class around builtins.set to handle conversion of single parameters.
+
+    E.g. `foo: HttpSet[int]` converts `foo=1` to `foo={1}` and `foo=(1, 1)` to `foo={1}`
+
+    Validates to `builtins.set`.
+    """
+
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls, source: Any, handler: GetCoreSchemaHandler
+    ) -> core_schema.CoreSchema:
+        return get_container_schema(
+            cls,
+            source=source,
+            handler=handler,
+            container_type_hint=Set,
+            container_type=set,
+        )
+
+
+class HttpTuple(tuple[ValueT], Generic[ValueT]):
+    """
+    Wrapper class around builtins.tuple to handle conversion of single parameters.
+
+    WARNING: Only supports homogenous tuples!
+    - use `HttpTuple[str | int, ...]`, not `HttpTuple[str | int, str | int]`; you can augment this with `Field(max_len=2)`
+    - Use regular `tuple[str, int]` for tuples of mixed types and known length
+
+    E.g. `foo: HttpTuple[int]` converts `foo=1` to `foo=(1,)` and `foo=[1, 1]` to `foo=(1, 1)`
+
+    Validates to `builtins.tuple`.
+    """
+
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls, source: Any, handler: GetCoreSchemaHandler
+    ) -> core_schema.CoreSchema:
+        return get_container_schema(
+            cls,
+            source=source,
+            handler=handler,
+            container_type_hint=Tuple,  # type: ignore[arg-type]
+            container_type=tuple,
+        )
 
 
 class Response(ResponseBase):

@@ -1,11 +1,23 @@
 import logging
 
-from .types import HtmlResponse, Response, Request, MultipartFormRequest, FileResponse
+from .types import (
+    HtmlResponse,
+    HttpList,
+    HttpSet,
+    HttpTuple,
+    Response,
+    Request,
+    MultipartFormRequest,
+    FileResponse,
+)
 from .spec import FlaskPydanticSpec
 
 __all__ = [
     "FlaskPydanticSpec",
     "HtmlResponse",
+    "HttpList",
+    "HttpSet",
+    "HttpTuple",
     "Response",
     "Request",
     "MultipartFormRequest",
